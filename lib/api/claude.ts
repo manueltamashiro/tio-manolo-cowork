@@ -9,7 +9,7 @@ import type {
 import type { Tool, ToolUseBlock } from "@/types/tools";
 import { getLogger } from "@/lib/logging";
 
-const DEFAULT_MODEL: ModelId = "claude-3-7-sonnet-20250219";
+const DEFAULT_MODEL: ModelId = "claude-opus-4-6";
 const DEFAULT_MAX_TOKENS = 8192;
 
 const logger = getLogger().child({ source: "claude-api" });
@@ -75,6 +75,9 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
   }
 }
 
+/** Models that support extended thinking */
+const THINKING_MODELS: ModelId[] = ["claude-3-7-sonnet-20250219", "claude-opus-4-6"];
+
 /**
  * Creates a non-streaming chat request to Claude API
  */
@@ -92,27 +95,60 @@ export async function createChatCompletion(
       timeout: 60000,
     });
 
-    const model = request.model || DEFAULT_MODEL;
+    const model = (request.model || DEFAULT_MODEL) as ModelId;
+
+    // Build thinking parameter when requested and supported
+    const supportsThinking = THINKING_MODELS.includes(model);
+    const thinkingParam = request.enableThinking && supportsThinking
+      ? { type: "enabled" as const, budget_tokens: request.thinkingBudget ?? 10000 }
+      : undefined;
+
+    // Build messages, applying cache_control to the last user turn for prompt caching
+    const messages = request.messages
+      .filter((msg) => msg.role !== "system")
+      .map((msg, idx, arr) => {
+        const isLastUser = msg.role === "user" && idx === arr.length - 1;
+        return {
+          role: msg.role as "user" | "assistant",
+          content: isLastUser
+            ? [{ type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" as const } }]
+            : msg.content,
+        };
+      });
+
+    // Extract system message if present
+    const systemMsg = request.messages.find((m) => m.role === "system");
+    const systemParam = request.systemPrompt || systemMsg?.content;
 
     const response = await client.messages.create({
       model,
       max_tokens: request.maxTokens || DEFAULT_MAX_TOKENS,
-      temperature: request.temperature,
-      messages: request.messages.map((msg) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      })),
+      ...(thinkingParam ? {} : { temperature: request.temperature }),
+      ...(systemParam && {
+        system: [
+          {
+            type: "text" as const,
+            text: systemParam,
+            cache_control: { type: "ephemeral" as const },
+          },
+        ],
+      }),
+      messages,
       stream: false,
       ...(tools && { tools }),
+      ...(thinkingParam && { thinking: thinkingParam }),
     });
 
     // Extract text content from response
     let content = "";
+    let thinkingContent = "";
     const toolUses: ToolUseBlock[] = [];
 
     for (const block of response.content) {
       if (block.type === "text") {
         content += block.text;
+      } else if ((block as any).type === "thinking") {
+        thinkingContent += (block as any).thinking;
       } else if (block.type === "tool_use") {
         toolUses.push({
           type: "tool_use",
@@ -135,6 +171,7 @@ export async function createChatCompletion(
 
     return {
       content,
+      thinking: thinkingContent || undefined,
       model: response.model,
       usage: response.usage
         ? {
@@ -191,16 +228,46 @@ export async function* streamChatCompletion(
       timeout: 60000,
     });
 
+    // Build thinking parameter when requested and supported
+    const supportsThinking = THINKING_MODELS.includes(model as ModelId);
+    const thinkingParam = request.enableThinking && supportsThinking
+      ? { type: "enabled" as const, budget_tokens: request.thinkingBudget ?? 10000 }
+      : undefined;
+
+    // Build messages, applying cache_control to the last user turn for prompt caching
+    const messages = request.messages
+      .filter((msg) => msg.role !== "system")
+      .map((msg, idx, arr) => {
+        const isLastUser = msg.role === "user" && idx === arr.length - 1;
+        return {
+          role: msg.role as "user" | "assistant",
+          content: isLastUser
+            ? [{ type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" as const } }]
+            : msg.content,
+        };
+      });
+
+    // Extract system message if present
+    const systemMsg = request.messages.find((m) => m.role === "system");
+    const systemParam = request.systemPrompt || systemMsg?.content;
+
     const stream = await client.messages.create({
       model,
       max_tokens: request.maxTokens || DEFAULT_MAX_TOKENS,
-      temperature: request.temperature,
-      messages: request.messages.map((msg) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      })),
+      ...(thinkingParam ? {} : { temperature: request.temperature }),
+      ...(systemParam && {
+        system: [
+          {
+            type: "text" as const,
+            text: systemParam,
+            cache_control: { type: "ephemeral" as const },
+          },
+        ],
+      }),
+      messages,
       stream: true,
       ...(tools && { tools }),
+      ...(thinkingParam && { thinking: thinkingParam }),
     });
 
     for await (const event of stream) {
@@ -211,6 +278,11 @@ export async function* streamChatCompletion(
               type: "content",
               content: event.delta.text,
             };
+          } else if ((event.delta as any).type === "thinking_delta") {
+            yield {
+              type: "thinking",
+              content: (event.delta as any).thinking,
+            } as StreamChunk;
           }
           break;
 
@@ -295,6 +367,8 @@ export async function* streamChatCompletion(
  */
 export function getAvailableModels(): ModelId[] {
   return [
+    "claude-opus-4-6",
+    "claude-sonnet-4-5",
     "claude-3-7-sonnet-20250219",
     "claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022",
@@ -307,6 +381,8 @@ export function getAvailableModels(): ModelId[] {
  */
 export function getModelDisplayName(model: ModelId): string {
   const names: Record<ModelId, string> = {
+    "claude-opus-4-6": "Claude Opus 4.6",
+    "claude-sonnet-4-5": "Claude Sonnet 4.5",
     "claude-3-7-sonnet-20250219": "Claude 3.7 Sonnet",
     "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
     "claude-3-5-haiku-20241022": "Claude 3.5 Haiku",
