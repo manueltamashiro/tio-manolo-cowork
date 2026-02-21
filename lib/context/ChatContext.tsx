@@ -23,6 +23,8 @@ import { useCurrentSessionState } from '../storage/ui-state';
  * Token pricing per 1M tokens (in USD)
  */
 const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead?: number; cacheCreation?: number }> = {
+  "claude-opus-4-6": { input: 15.0, output: 75.0, cacheRead: 1.50, cacheCreation: 18.75 },
+  "claude-sonnet-4-5": { input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreation: 3.75 },
   "claude-3-7-sonnet-20250219": { input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreation: 3.75 },
   "claude-3-5-sonnet-20241022": { input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreation: 3.75 },
   "claude-3-5-haiku-20241022": { input: 0.8, output: 4.0, cacheRead: 0.08, cacheCreation: 1.0 },

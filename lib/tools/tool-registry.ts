@@ -15,6 +15,7 @@ import {
   statSync,
 } from "fs";
 import { resolve } from "path";
+import { execSync } from "child_process";
 import { validatePath } from "@/lib/fs/directory";
 import { listDirectory } from "@/lib/fs/directory";
 import { writeFile } from "@/lib/fs/write";
@@ -440,6 +441,78 @@ async function executeListDirectory(
   }
 }
 
+// Commands that are never allowed regardless of context
+const BLOCKED_COMMANDS = [
+  /rm\s+-rf\s+\//,
+  /mkfs/,
+  /dd\s+if=/,
+  /chmod\s+777\s+\//,
+  /curl.*\|\s*(bash|sh)/,
+  /wget.*\|\s*(bash|sh)/,
+];
+
+/**
+ * Bash tool - runs a shell command and returns stdout/stderr
+ */
+async function executeBash(
+  input: Record<string, unknown>,
+  context: ToolExecutionContext
+): Promise<ToolExecutionResult> {
+  const { command, workingDirectory, timeout = 30000 } = input as {
+    command: string;
+    workingDirectory?: string;
+    timeout?: number;
+  };
+
+  if (!command || typeof command !== "string") {
+    return { success: false, error: "command is required and must be a string" };
+  }
+
+  // Block destructive patterns
+  for (const pattern of BLOCKED_COMMANDS) {
+    if (pattern.test(command)) {
+      return { success: false, error: `Command blocked for safety: ${command}` };
+    }
+  }
+
+  // Resolve and validate working directory
+  let cwd: string | undefined;
+  if (workingDirectory) {
+    cwd = resolve(workingDirectory);
+    if (context.workspacePath) {
+      try {
+        validatePath(context.workspacePath, cwd);
+      } catch {
+        return { success: false, error: "Access denied: working directory outside workspace" };
+      }
+    }
+  } else if (context.workspacePath) {
+    cwd = context.workspacePath;
+  }
+
+  const timeoutMs = Math.min(Number(timeout) || 30000, 120000);
+
+  try {
+    const output = execSync(command, {
+      cwd,
+      timeout: timeoutMs,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    return {
+      success: true,
+      content: output || "(no output)",
+      metadata: { toolName: "bash", command },
+    };
+  } catch (error: any) {
+    const stderr = error.stderr ? String(error.stderr) : "";
+    const stdout = error.stdout ? String(error.stdout) : "";
+    const combined = [stdout, stderr].filter(Boolean).join("\n") || error.message;
+    return { success: false, error: combined };
+  }
+}
+
 /**
  * Tool definitions registry
  */
@@ -550,6 +623,32 @@ export const toolRegistry: RegisteredTool[] = [
       required: ["directoryPath"],
     },
     executor: executeListDirectory,
+  },
+  {
+    name: "bash",
+    description:
+      "Execute a shell command and return its output. Use for running tests, build scripts, git operations, or any shell task. Commands run inside the workspace directory by default.",
+    input_schema: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description: "The shell command to execute.",
+        },
+        workingDirectory: {
+          type: "string",
+          description:
+            "Directory to run the command in. Defaults to the workspace root.",
+        },
+        timeout: {
+          type: "number",
+          description:
+            "Timeout in milliseconds (max 120000). Defaults to 30000.",
+        },
+      },
+      required: ["command"],
+    },
+    executor: executeBash,
   },
 ];
 

@@ -10,19 +10,44 @@ export interface ModelInfo {
   outputPrice: number; // Price per million output tokens
   maxTokens: number;
   tier: "flagship" | "balanced" | "fast";
+  supportsExtendedThinking?: boolean;
 }
 
 export const MODELS: Record<ModelId, ModelInfo> = {
-  "claude-3-7-sonnet-20250219": {
-    id: "claude-3-7-sonnet-20250219",
-    name: "Claude 3.7 Sonnet",
-    description: "Most intelligent model for complex reasoning, coding, and nuanced content creation.",
-    capabilities: ["Complex reasoning", "Advanced coding", "Nuanced writing", "Tool use"],
+  "claude-opus-4-6": {
+    id: "claude-opus-4-6",
+    name: "Claude Opus 4.6",
+    description: "Most powerful model for complex reasoning, deep analysis, and advanced coding tasks.",
+    capabilities: ["Complex reasoning", "Advanced coding", "Deep analysis", "Extended thinking", "Tool use"],
     contextWindow: 200000,
     inputPrice: 15.0,
     outputPrice: 75.0,
-    maxTokens: 8192,
+    maxTokens: 32000,
     tier: "flagship",
+    supportsExtendedThinking: true,
+  },
+  "claude-sonnet-4-5": {
+    id: "claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    description: "Ideal balance of intelligence and speed for most tasks.",
+    capabilities: ["Balanced reasoning", "Strong coding", "Efficient tool use", "Fast responses"],
+    contextWindow: 200000,
+    inputPrice: 3.0,
+    outputPrice: 15.0,
+    maxTokens: 16000,
+    tier: "balanced",
+  },
+  "claude-3-7-sonnet-20250219": {
+    id: "claude-3-7-sonnet-20250219",
+    name: "Claude 3.7 Sonnet",
+    description: "Advanced reasoning with optional extended thinking for difficult problems.",
+    capabilities: ["Complex reasoning", "Advanced coding", "Extended thinking", "Tool use"],
+    contextWindow: 200000,
+    inputPrice: 3.0,
+    outputPrice: 15.0,
+    maxTokens: 8192,
+    tier: "balanced",
+    supportsExtendedThinking: true,
   },
   "claude-3-5-sonnet-20241022": {
     id: "claude-3-5-sonnet-20241022",

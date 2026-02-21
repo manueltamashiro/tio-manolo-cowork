@@ -13,6 +13,12 @@ export interface ChatRequest {
   stream?: boolean;
   /** Optional file context to include in the conversation */
   fileContexts?: FileContext[];
+  /** Enable extended thinking (supported on claude-3-7-sonnet and claude-opus-4-6) */
+  enableThinking?: boolean;
+  /** Token budget for extended thinking (default 10000) */
+  thinkingBudget?: number;
+  /** System prompt to send as a top-level system parameter */
+  systemPrompt?: string;
 }
 
 export interface FileContext {
@@ -28,6 +34,7 @@ export interface FileContext {
 
 export interface ChatResponse {
   content: string;
+  thinking?: string;
   model: string;
   usage?: {
     inputTokens: number;
@@ -38,7 +45,7 @@ export interface ChatResponse {
 }
 
 export interface StreamChunk {
-  type: "content" | "error" | "done" | "tool_use_start" | "tool_use_delta" | "tool_result";
+  type: "content" | "thinking" | "error" | "done" | "tool_use_start" | "tool_use_delta" | "tool_result";
   content?: string;
   error?: string;
   toolUse?: ToolUseBlock;
@@ -63,4 +70,10 @@ export interface ClaudeError extends Error {
   type?: string;
 }
 
-export type ModelId = "claude-3-7-sonnet-20250219" | "claude-3-5-sonnet-20241022" | "claude-3-5-haiku-20241022" | "claude-3-opus-20240229";
+export type ModelId =
+  | "claude-opus-4-6"
+  | "claude-sonnet-4-5"
+  | "claude-3-7-sonnet-20250219"
+  | "claude-3-5-sonnet-20241022"
+  | "claude-3-5-haiku-20241022"
+  | "claude-3-opus-20240229";
